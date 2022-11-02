@@ -3,7 +3,8 @@ import time
 from socket import *
 
 server_name = 'localhost'
-server_port = 50000
+server_port = 34561
+current_path = os.getcwd()
 
 
 def hostname():
@@ -18,9 +19,48 @@ def user_logged():
     clientSocket.send(username.encode())
 
 
+def ls():
+    print('List directory requested')
+    list_dir = os.walk(current_path)
+    for root, dirs, files in list_dir:
+        for dir in dirs:
+            clientSocket.send(dir.encode())
+            time.sleep(0.1)
+
+        clientSocket.send('/'.encode())
+
+        for file in files:
+            clientSocket.send(file.encode())
+            time.sleep(0.1)
+
+        clientSocket.send('.'.encode())
+        break
+
+
+def cd():
+    global current_path
+    print('Change directory requested')
+    path = clientSocket.recv(1024).decode()
+    try:
+        os.chdir(path)
+        current_path = path
+        clientSocket.send(current_path.encode())
+    except FileNotFoundError:
+        print('Path not found')
+        clientSocket.send('Path not found'.encode())
+
+
+def pwd():
+    print('Working directory requested')
+    clientSocket.send(os.getcwdb())
+
+
 switcher = {
     'hostname': hostname,
-    'user': user_logged}
+    'user': user_logged,
+    'ls': ls,
+    'cd': cd,
+    'pwd': pwd}
 
 connected = False
 while True:
@@ -44,10 +84,11 @@ while True:
             if command in switcher.keys() and command != '':
                 print('Command received: ', command)
                 switcher[command]()
-        except ConnectionResetError:
+        except ConnectionError:
             print('Server disconnected')
             # wait 5 seconds
             clientSocket.shutdown(SHUT_RDWR)
             clientSocket.close()
             connected = False
             time.sleep(10)
+            os.system('cls')
