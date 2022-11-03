@@ -1,10 +1,12 @@
 import os
+import shutil
 import time
+from pathlib import Path
 from socket import *
 
 server_name = 'localhost'
 server_port = 34561
-current_path = os.getcwd()
+current_path = Path.home()
 
 
 def hostname():
@@ -37,13 +39,47 @@ def ls():
         break
 
 
-def cd():
+# def cd():
+#     global current_path
+#     print('Change path requested')
+#     path = clientSocket.recv(1024).decode()
+#     try:
+#         os.chdir(path)
+#         current_path = path
+#         clientSocket.send(current_path.encode())
+#     except FileNotFoundError:
+#         print('Path not found')
+#         clientSocket.send('Path not found'.encode())
+
+
+def cdup():
+    print('Change to parent directory requested')
     global current_path
-    print('Change directory requested')
+    current_path = str(Path(current_path).parent)
+    clientSocket.send(current_path.encode())
+
+
+def cdhome():
+    global current_path
+    print('Change directory to home requested')
+    current_path = Path.home()
+    clientSocket.send(str(current_path).encode())
+
+
+def cdroot():
+    global current_path
+    print('Change directory to root requested')
+    current_path = Path('C:\\')
+    clientSocket.send(str(current_path).encode())
+
+
+def join():
+    global current_path
+    print('Join directory requested')
     path = clientSocket.recv(1024).decode()
     try:
-        os.chdir(path)
-        current_path = path
+        current_path = str(current_path) + '\\' + path
+        os.chdir(current_path)
         clientSocket.send(current_path.encode())
     except FileNotFoundError:
         print('Path not found')
@@ -52,15 +88,54 @@ def cd():
 
 def pwd():
     print('Working directory requested')
-    clientSocket.send(os.getcwdb())
+    clientSocket.send(str(current_path).encode())
+
+
+def get():
+    print('Get file requested')
+    file_name = clientSocket.recv(1024).decode()
+    print('Downloading file ' + file_name)
+    try:
+        file = open(file_name, 'rb')
+        file_data = file.read(1024)
+        clientSocket.send(file_data)
+        while file_data:
+            file_data = file.read(1024)
+            clientSocket.send(file_data)
+        file.close()
+    except FileNotFoundError:
+        print('File not found')
+        clientSocket.send('File not found'.encode())
+
+
+def getall():
+    shutil.make_archive(str(Path.home()) + '\\files', 'zip', current_path)
+    print('Get all files requested')
+    try:
+        file = open(str(Path.home()) + '\\files.zip', 'rb')
+        file_data = file.read(1024)
+        clientSocket.send(file_data)
+        while file_data:
+            file_data = file.read(1024)
+            clientSocket.send(file_data)
+        file.close()
+    except FileNotFoundError:
+        print('File not found')
+        clientSocket.send('File not found'.encode())
+    os.remove(str(Path.home()) + '\\files.zip')
 
 
 switcher = {
     'hostname': hostname,
     'user': user_logged,
     'ls': ls,
-    'cd': cd,
-    'pwd': pwd}
+    'pwd': pwd,
+    'get': get,
+    'getall': getall,
+    'cdup': cdup,
+    'cdhome': cdhome,
+    'cdroot': cdroot,
+    'join': join}
 
 connected = False
 while True:
