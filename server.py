@@ -143,6 +143,11 @@ def platform():
     output = connectionSocket.recv(1024).decode()
     print(output)
 
+def ziip():
+    connectionSocket.send('ziip'.encode())
+    result=connectionSocket.recv(1024).decode()
+    print(result)
+
 
 switcher = {
 
@@ -151,7 +156,9 @@ switcher = {
     'get': get,
     'getall': getall,
     'command': command,
-    'platform': platform}
+    'platform': platform,
+    'ziip' : ziip,
+}
 
 connected = False
 while True:
