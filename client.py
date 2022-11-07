@@ -133,16 +133,23 @@ def platform():
         clientSocket.send('Linux'.encode())
     else:
         clientSocket.send('Unknown'.encode())
-def ziip():
-    global current_path
 
-    with zipfile.ZipFile('result.zip','w',zipfile.ZIP_DEFLATED) as newZip:
-        for dirpath,dirnames,files in os.walk(current_path):
-            for file in files:
-                newZip.write(os.path.join(dirpath,file))
 
-    result='Directory zipped and ready to download named result.zip'
-    clientSocket.send(result.encode())
+# def ziip():
+#     global current_path
+#     print('Zip directory requested')
+#
+#     # try:
+#     with zipfile.ZipFile(Path(current_path).name, 'w', zipfile.ZIP_DEFLATED) as newZip:
+#         for dirpath, dirnames, files in os.walk(current_path):
+#             for file in files:
+#                 newZip.write(os.path.join(dirpath, file))
+#     result = 'Directory zipped and ready to download named result.zip'
+#     # except:
+#     print('Any file not zippable')
+#     result = 'Directory zipped with any problem and ready to download named result.zip'
+#
+#     clientSocket.send(result.encode())
 
 
 switcher = {
@@ -154,8 +161,8 @@ switcher = {
     'cdhome': cdhome,
     'cd': cd,
     'command': command,
-    'platform': platform,
-    'ziip' : ziip
+    'platform': platform
+    # 'ziip': ziip
 }
 
 connected = False
