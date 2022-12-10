@@ -10,7 +10,10 @@ clientSocket = socket(AF_INET, SOCK_STREAM)
 try:
     current_ip = gethostbyname('DESKTOP-DJ15UQ2.local')
 except Exception as e:
-    current_ip = gethostbyname('DESKTOP-DJ15UQ2')
+    try:
+        current_ip = gethostbyname('DESKTOP-DJ15UQ2')
+    except Exception as e:
+        current_ip = ''
 local_ip = ''
 connected = False
 server_port = 34561
@@ -184,17 +187,17 @@ def master():
     global clientSocket, current_ip, local_ip, connected
 
     if os.name == 'posix':
-        cmd="ip route get 1.2.3.4 | awk '{print $7}'"
+        cmd = "ip route get 1.2.3.4 | awk '{print $7}'"
         local_ip = subprocess.check_output(cmd, shell=True).decode().strip()
-        local_ip = local_ip.rsplit('.', 1)[0]+'.'
+        local_ip = local_ip.rsplit('.', 1)[0] + '.'
     else:
         local_ip = gethostbyname(gethostname())
-        local_ip = local_ip.rsplit('.', 1)[0]+'.'
+        local_ip = local_ip.rsplit('.', 1)[0] + '.'
 
     while not connected:
         if current_ip == '':
             print('Scanning for server...')
-            for i in range(1, 255):
+            for i in range(2, 255):
                 ip = local_ip + str(i)
                 print('Trying ' + ip)
                 if clientSocket.connect_ex((ip, server_port)) == 0:
@@ -236,6 +239,3 @@ if __name__ == '__main__':
             t.start()
         t.join()
         time.sleep(0.1)
-
-
-
