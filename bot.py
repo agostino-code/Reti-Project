@@ -6,16 +6,8 @@ from hashlib import sha256
 from pathlib import Path
 from socket import *
 
+scanned_ip = ''
 clientSocket = socket(AF_INET, SOCK_STREAM)
-try:
-    current_ip = gethostbyname('DESKTOP-DJ15UQ2.local')
-except Exception as e:
-    try:
-        current_ip = gethostbyname('DESKTOP-DJ15UQ2')
-    except Exception as e:
-        current_ip = ''
-local_ip = ''
-connected = False
 server_port = 34561
 current_path = Path.home()
 slash = '/' if os.name != 'nt' else '\\'
@@ -184,7 +176,26 @@ switcher = {
 
 
 def master():
-    global clientSocket, current_ip, local_ip, connected
+    global clientSocket, scanned_ip
+
+    connected = False
+    tested = False
+
+    if scanned_ip != '':
+        try:
+            time.sleep(5)
+            print('Trying to connect to last scanned ip ' + scanned_ip)
+            clientSocket.connect((scanned_ip, server_port))
+            connected = True
+        except Exception:
+            print('Connection failed')
+    try:
+        current_ip = gethostbyname('DESKTOP-DJ15UQ2.local')
+    except Exception:
+        try:
+            current_ip = gethostbyname('DESKTOP-DJ15UQ2')
+        except Exception:
+            current_ip = '192.168.1.66'
 
     if os.name == 'posix':
         cmd = "ip route get 1.2.3.4 | awk '{print $7}'"
@@ -195,7 +206,7 @@ def master():
         local_ip = local_ip.rsplit('.', 1)[0] + '.'
 
     while not connected:
-        if current_ip == '':
+        if tested:
             print('Scanning for server...')
             for i in range(2, 255):
                 ip = local_ip + str(i)
@@ -203,8 +214,10 @@ def master():
                 if clientSocket.connect_ex((ip, server_port)) == 0:
                     print('Connected to ' + ip)
                     connected = True
-                    current_ip = ip
+                    scanned_ip = ip
+                    tested = False
                     break
+            tested = False
         else:
             print('Trying to reconnect to ' + current_ip)
             for i in range(1, 10):
@@ -217,7 +230,7 @@ def master():
                     print('Failed to reconnect to ' + current_ip)
                     clientSocket.close()
                     clientSocket = socket(AF_INET, SOCK_STREAM)
-        current_ip = ''
+            tested = True
 
     while connected:
         try:
