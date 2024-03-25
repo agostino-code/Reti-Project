@@ -1,5 +1,5 @@
 # Reti-Project
- Prima prova intercorso di reti
+Reverse Shell Python.
 ## Comandi
 - hostname -> restituisce l'hostname
 - ls -> stampa i file della directory attuale
